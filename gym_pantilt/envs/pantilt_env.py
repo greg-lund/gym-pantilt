@@ -5,8 +5,8 @@ from gym.utils import seeding
 
 class PanTiltEnv(gym.Env):
 
-    def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.01,1),
-            fov=(100,85), cyl_rad=2.5, raycast_disc = 0.3):
+    def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.1,5),
+            fov=(100,85), cyl_rad=2.5, raycast_disc = 1):
 
         self.min_pan = -135
         self.max_pan = 135
@@ -75,10 +75,13 @@ class PanTiltEnv(gym.Env):
         phi *= np.pi/180
         t = np.sqrt(r**2/((np.cos(phi)*np.sin(theta))**2+np.sin(phi)**2))
 
-        if np.isnan(t) or np.isinf(t) or t > 6:
+        if np.isnan(t) or np.isinf(t):
             return 0
 
         pos = [x + t*np.cos(phi)*np.cos(theta),t*np.cos(phi)*np.sin(theta), t*np.sin(phi)]
+
+        if np.linalg.norm([pos[0]-x,pos[1],pos[2]]) > 6:
+            return 0
 
         xind = int(pos[0]/(2*self.episode_range) * (self.occ_arr.shape[0]-1))
         yind = int(((np.arctan2(pos[1],pos[2])*180/np.pi)%360)/360 * (self.occ_arr.shape[1]-1))
