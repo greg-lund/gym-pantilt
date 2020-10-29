@@ -6,7 +6,7 @@ from gym.utils import seeding
 class PanTiltEnv(gym.Env):
 
     def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.1,5),
-            fov=(100,85), cyl_rad=2.5, raycast_disc = 1):
+            fov=(100,85), cyl_rad=2.5, raycast_disc = 2):
 
         self.min_pan = -135
         self.max_pan = 135
@@ -49,6 +49,8 @@ class PanTiltEnv(gym.Env):
         self.state[-1] = x
 
         reward = self.fill_fov(x,a[0],a[1],self.cyl_rad)
+        if reward == 0:
+            reward = -100
 
         return self.state,reward,(x>=2*self.episode_range),{}
 
@@ -63,7 +65,7 @@ class PanTiltEnv(gym.Env):
                 reward += self.raycast_cylinder(x,theta+dtheta,phi+dphi,r)
                 n+=1
 
-        return 1.0*reward/n
+        return reward
 
     def raycast_cylinder(self,x,theta,phi,r):
         '''
