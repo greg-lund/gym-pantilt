@@ -37,6 +37,7 @@ class PanTiltEnv(gym.Env):
     def reset(self):
         self.state = np.zeros(2*(self.n_hist+1)+1)
         self.state[-1] = self.episode_range
+        self.occ_arr[:] = 0
         return self.state
 
     def step(self,action):
