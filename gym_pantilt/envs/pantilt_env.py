@@ -6,7 +6,7 @@ from gym.utils import seeding
 class PanTiltEnv(gym.Env):
 
     def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.01,1),
-            fov=(100,85), cyl_rad=2.5, raycast_disc = 0.2):
+            fov=(100,85), cyl_rad=2.5, raycast_disc = 0.3):
 
         self.min_pan = -135
         self.max_pan = 135
@@ -57,8 +57,8 @@ class PanTiltEnv(gym.Env):
         '''
         n = 0
         reward = 0
-        for dtheta in np.linspace(theta-self.fov[0]/2,theta+self.fov[0]/2,int(self.fov[0]/self.raycast_disc)):
-            for dphi in np.linspace(phi-self.fov[1]/2,phi+self.fov[1]/2,int(self.fov[1]/self.raycast_disc)):
+        for dtheta in np.linspace(-self.fov[0]/2,self.fov[0]/2,int(self.fov[0]/self.raycast_disc)):
+            for dphi in np.linspace(-self.fov[1]/2,self.fov[1]/2,int(self.fov[1]/self.raycast_disc)):
                 reward += self.raycast_cylinder(x,theta+dtheta,phi+dphi,r)
                 n+=1
 
@@ -69,7 +69,6 @@ class PanTiltEnv(gym.Env):
         Find the intersection of a ray located along a cylinders inner axis with 
         a radius of r. theta = pan angle, phi = tilt angle, r = radius
         '''
-        print("x = %.2f, theta = %.2f, phi = %.2f, r = %.2f"%(x,theta,phi,r))
         if theta == 0 and phi == 0: return 0
 
         theta *= np.pi/180
@@ -80,14 +79,13 @@ class PanTiltEnv(gym.Env):
             return 0
 
         pos = [x + t*np.cos(phi)*np.cos(theta),t*np.cos(phi)*np.sin(theta), t*np.sin(phi)]
-        #print("t:",t)
-        #print("pos:",pos)
 
         xind = int(pos[0]/(2*self.episode_range) * (self.occ_arr.shape[0]-1))
-        yind = int(((np.arctan2(pos[1],pos[0])*180/np.pi)%360)/360 * (self.occ_arr.shape[1]-1))
+        yind = int(((np.arctan2(pos[1],pos[2])*180/np.pi)%360)/360 * (self.occ_arr.shape[1]-1))
 
         if xind >= self.occ_arr.shape[0] or xind < 0: return 0 
 
         new_pixel = self.occ_arr[xind,yind] == 0
         self.occ_arr[xind,yind] = 1
         return new_pixel
+

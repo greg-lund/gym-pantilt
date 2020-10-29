@@ -1,0 +1,3 @@
+*.pyc
+gym_pantilt.egg-info
+__pycache__
