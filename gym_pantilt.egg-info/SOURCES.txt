@@ -1,9 +1,0 @@
-setup.py
-gym_pantilt/__init__.py
-gym_pantilt.egg-info/PKG-INFO
-gym_pantilt.egg-info/SOURCES.txt
-gym_pantilt.egg-info/dependency_links.txt
-gym_pantilt.egg-info/requires.txt
-gym_pantilt.egg-info/top_level.txt
-gym_pantilt/envs/__init__.py
-gym_pantilt/envs/pantilt_env.py
