@@ -5,8 +5,8 @@ from gym.utils import seeding
 
 class PanTiltEnv(gym.Env):
 
-    def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.2,5),
-            fov=(100,85), cyl_rad=2.5):
+    def __init__(self, num_bins=(10,2), n_hist=5, episode_range=5, disc=(0.01,1),
+            fov=(100,85), cyl_rad=2.5, raycast_disc = 0.2):
 
         self.min_pan = -135
         self.max_pan = 135
@@ -16,6 +16,7 @@ class PanTiltEnv(gym.Env):
         self.n_hist = n_hist
         self.fov = fov
         self.disc = disc
+        self.raycast_disc = raycast_disc
         self.num_bins = num_bins
         self.cyl_rad = cyl_rad
         self.episode_range = episode_range
@@ -31,7 +32,7 @@ class PanTiltEnv(gym.Env):
         self.state = np.zeros(2*(self.n_hist+1)+1)
         self.state[-1] = episode_range
 
-        self.observation_space = spaces.Box(self.low,self.high,dtype=np.float32)
+        self.observation_space = spaces.Box(np.float32(self.low),np.float32(self.high))
 
     def reset(self):
         self.state = np.zeros(2*(self.n_hist+1)+1)
@@ -48,7 +49,7 @@ class PanTiltEnv(gym.Env):
 
         reward = self.fill_fov(x,a[0],a[1],self.cyl_rad)
 
-        return self.state,reward,(x>=self.episode_range),{}
+        return self.state,reward,(x>=2*self.episode_range),{}
 
     def fill_fov(self,x,theta,phi,r):
         '''
@@ -56,8 +57,8 @@ class PanTiltEnv(gym.Env):
         '''
         n = 0
         reward = 0
-        for dtheta in np.linspace(theta-self.fov[0]/2,theta+self.fov[0]/2,int(self.fov[0]/self.disc[1])):
-            for dphi in np.linspace(phi-self.fov[1]/2,phi+self.fov[1]/2,int(self.fov[1]/self.disc[1])):
+        for dtheta in np.linspace(theta-self.fov[0]/2,theta+self.fov[0]/2,int(self.fov[0]/self.raycast_disc)):
+            for dphi in np.linspace(phi-self.fov[1]/2,phi+self.fov[1]/2,int(self.fov[1]/self.raycast_disc)):
                 reward += self.raycast_cylinder(x,theta+dtheta,phi+dphi,r)
                 n+=1
 
@@ -68,16 +69,24 @@ class PanTiltEnv(gym.Env):
         Find the intersection of a ray located along a cylinders inner axis with 
         a radius of r. theta = pan angle, phi = tilt angle, r = radius
         '''
+        print("x = %.2f, theta = %.2f, phi = %.2f, r = %.2f"%(x,theta,phi,r))
+        if theta == 0 and phi == 0: return 0
+
         theta *= np.pi/180
         phi *= np.pi/180
-        t = 1.0/np.sqrt((np.cos(phi)*np.sin(theta))**2+np.sin(phi)**2)
+        t = np.sqrt(r**2/((np.cos(phi)*np.sin(theta))**2+np.sin(phi)**2))
 
-        pos = [x + r*t*np.cos(phi)*np.cos(theta),r*t*np.cos(phi)*np.sin(theta), r*t*np.sin(phi)]
+        if np.isnan(t) or np.isinf(t) or t > 6:
+            return 0
+
+        pos = [x + t*np.cos(phi)*np.cos(theta),t*np.cos(phi)*np.sin(theta), t*np.sin(phi)]
+        #print("t:",t)
+        #print("pos:",pos)
 
         xind = int(pos[0]/(2*self.episode_range) * (self.occ_arr.shape[0]-1))
         yind = int(((np.arctan2(pos[1],pos[0])*180/np.pi)%360)/360 * (self.occ_arr.shape[1]-1))
 
-        if xind >= self.occ_arr.shape[0]: return 0 
+        if xind >= self.occ_arr.shape[0] or xind < 0: return 0 
 
         new_pixel = self.occ_arr[xind,yind] == 0
         self.occ_arr[xind,yind] = 1
