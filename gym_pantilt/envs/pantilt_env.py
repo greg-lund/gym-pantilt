@@ -51,7 +51,7 @@ class PanTiltEnv(gym.Env):
         self.state = self.state[:-2]
         self.state[-1] = x
 
-        reward = self.fill_fov(x,a[0],a[1],self.cyl_rad)
+        reward = self.fill_fov(x,a[0],a[1])
         if reward == 0:
             reward = -100
 
