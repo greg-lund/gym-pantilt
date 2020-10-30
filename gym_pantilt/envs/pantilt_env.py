@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+import quaternion
 import gym
 from gym import spaces
 from gym.utils import seeding
@@ -66,9 +67,33 @@ class PanTiltEnv(gym.Env):
         phi *= np.pi/180
 
         # Get basis vectors for our camera plane
-        v = np.array([1,0,0])
+        v =  np.array([1,0,0])
         e1 = np.array([0,0,1])
         e2 = np.array([0,-1,0])
+
+        '''
+        q1 = np.quaternion(np.cos(theta/2),e1.x*np.sin(theta/2),e1.y*np.sin(theta/2),e1.z*np.sin(theta/2))
+        v = q1*v*q1.conjugate()
+        e2 = q1*e2*q1.conjugate()
+        q2 = np.quaternion(e2.x*np.sin(phi/2),e2.y*np.sin(phi/2),e2.z*np.sin(phi/2),np.cos(phi/2))
+        v = q2*v*q2.conjugate()
+        e1 = q2*e1*q2.conjugate()
+
+        r1 = np.array([np.quaternion(np.cos(theta/2),e1.x*np.sin(theta/2),e1.y*np.sin(theta/2),e1.z*np.sin(theta/2)) for theta in np.linspace(-self.fov[0]*np.pi/360,self.fov[0]*np.pi/360,int(self.fov[0]/self.raycast_disc))])
+        v = r1*v*r1.conjugate()
+        print(quaternion.as_float_array(v))
+        e22 = r1*e2*r1.conjugate()
+        print(quaternion.as_float_array(e22))
+
+        r2 = np.array([np.quaternion(np.cos(dphi/2),e22.x*np.sin(dphi/2),e22.y*np.sin(dphi/2),e22.z*np.sin(dphi/2)) for phi in np.linspace(-self.fov[1]*np.pi/360,self.fov[1]*np.pi/360,int(self.fov[1]/self.raycast_disc))])
+        v = r2*v*r2.conjugate()
+
+        n = 0
+        reward = 0
+        for vec in v:
+            reward += self.raycast_cylinder(x,vec)
+            n+=1
+        '''
 
         r1 = R.from_quat([e1[0]*np.sin(theta/2),e1[1]*np.sin(theta/2),e1[2]*np.sin(theta/2),np.cos(theta/2)])
         v = r1.apply(v)
@@ -77,19 +102,28 @@ class PanTiltEnv(gym.Env):
         v = r2.apply(v)
         e1 = r2.apply(e1)
 
-        n = 0
-        reward = 0
-        for dtheta in np.linspace(-self.fov[0]*np.pi/360,self.fov[0]*np.pi/360,int(self.fov[0]/self.raycast_disc)):
-            for dphi in np.linspace(-self.fov[1]*np.pi/360,self.fov[1]*np.pi/360,int(self.fov[1]/self.raycast_disc)):
+        corners = np.zeros((4,3))
+        reward,n = 0,0
+        for dtheta in np.linspace(-self.fov[0]*np.pi/360,self.fov[0]*np.pi/360,2):
+            for dphi in np.linspace(-self.fov[1]*np.pi/360,self.fov[1]*np.pi/360,2):
                 rr1 = R.from_quat([e1[0]*np.sin(dtheta/2),e1[1]*np.sin(dtheta/2),e1[2]*np.sin(dtheta/2),np.cos(dtheta/2)])
                 vec = rr1.apply(v)
                 e22 = rr1.apply(e2)
                 rr2 = R.from_quat([e22[0]*np.sin(dphi/2),e22[1]*np.sin(dphi/2),e22[2]*np.sin(dphi/2),np.cos(dphi/2)])
-                vec2 = rr2.apply(vec)
-                e11 = rr2.apply(e1)
+                vec = rr2.apply(vec)
 
-                reward += self.raycast_cylinder(x,vec2)
+                corners[n,:] = vec
                 n+=1
+        
+        theta_lin = np.linspace(corners[0],corners[1],int(self.fov[0]/self.raycast_disc))
+        phi_lin = np.linspace(corners[0],corners[2],int(self.fov[1]/self.raycast_disc))
+        for t in theta_lin:
+            for p in phi_lin:
+                v = t + (p-phi_lin[0])
+                self.raycast_cylinder(x,v)
+
+
+        #for vector in XY: reward+=self.raycast_cylinder(x,vector)
 
         return reward
 
@@ -116,10 +150,8 @@ class PanTiltEnv(gym.Env):
         yind = int(((np.arctan2(pos[1],pos[2])*180/np.pi)%360)/360 * (self.occ_arr.shape[1]-1))
 
         if xind >= self.occ_arr.shape[0] or xind < 0:
-            print("Casted out of range!")
             return 0 
 
         new_pixel = self.occ_arr[xind,yind] == 0
         self.occ_arr[xind,yind] = 1
         return new_pixel
-
