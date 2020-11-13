@@ -59,6 +59,7 @@ class PanTiltEnv(gym.Env):
 
     def step(self,action):
         a = self.actions[action]
+        prev_a = self.state[0:2]
         x = self.state[-1]+self.disc[0]
 
         self.state = np.insert(self.state,0,a)
@@ -67,8 +68,8 @@ class PanTiltEnv(gym.Env):
 
         # Calculate reward
         new_pixels, free_space_pixels, total_pixels = self.fill_fov(x,a[0],a[1])
-        pan_distance = abs(self.state[1][0]-self.state[0][0])
-        tilt_distance = abs(self.state[1][1]-self.state[0][1])
+        pan_distance = abs(prev_a[0]-a[0])
+        tilt_distance = abs(prev_a[1]-a[1])
 
         reward = new_pixels/total_pixels + self.free_space_discount*free_space_pixels/total_pixels 
         - self.pan_discount*pan_distance**2/(self.max_pan-self.min_pan)**2 - self.tilt_discount*tilt_distance**2/(self.max_tilt-self.min_tilt)**2
