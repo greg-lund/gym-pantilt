@@ -1,7 +1,6 @@
 import numpy as np
 from multiprocessing import Pool
 from scipy.spatial.transform import Rotation as R
-import quaternion
 import gym
 from gym import spaces
 from gym.utils import seeding
@@ -13,19 +12,17 @@ class PanTiltEnv(gym.Env):
         # Discretization
         self.disc = (0.05,1)
         self.raycast_disc = 0.75 
-        self.n_hist = 5
 
         # Bounds for pan-tilt
         self.min_pan = -135
         self.max_pan = 135
         self.min_tilt = 0
         self.max_tilt = 90
-        self.num_bins = (10,3)
+        self.pan_disc = 15
+        self.tilt_disc = 15
 
         # Discount Factors
-        self.free_space_discount = 0.3
-        self.pan_discount = 1.0
-        self.tilt_discount = 1.0
+        self.free_space_discount = 0.15
 
         # Cylinder shape
         self.cyl_len = 18
@@ -39,42 +36,36 @@ class PanTiltEnv(gym.Env):
 
         # Gym spaces and setup
         self.occ_arr = np.zeros((int(self.cyl_len/self.disc[0]),int(360/self.disc[1])))
-        self.action_space = spaces.Discrete(self.num_bins[0]*self.num_bins[1])
+        self.action_space = spaces.Discrete(8)
 
-        self.actions = sorted([(x,y) for x in np.linspace(self.min_pan,self.max_pan,self.num_bins[0]) for y in np.linspace(self.min_tilt,self.max_tilt,self.num_bins[1])],key=lambda x: x[1])
+        self.actions = [(self.pan_disc,0),(self.pan_disc,self.tilt_disc),(0,self.tilt_disc),(-self.pan_disc,self.tilt_disc),
+                (-self.pan_disc,0),(-self.pan_disc,-self.tilt_disc),(0,-self.tilt_disc),(self.pan_disc,-self.tilt_disc)]
 
-        self.low = np.append(np.repeat([self.min_pan,self.min_tilt],self.n_hist+1,0).flatten(),self.start_x)
-        self.high = np.append(np.repeat([self.max_pan,self.max_tilt],self.n_hist+1,0).flatten(),self.start_x+self.episode_range)
+        self.low = np.array([self.min_pan,self.min_tilt])
+        self.high = np.array([self.max_pan,self.max_tilt])
 
-        self.state = np.zeros(2*(self.n_hist+1)+1)
-        self.state[-1] = self.start_x
+        self.state = np.zeros(2)
 
         self.observation_space = spaces.Box(np.float32(self.low),np.float32(self.high))
 
     def reset(self):
-        self.state = np.zeros(2*(self.n_hist+1)+1)
-        self.state[-1] = self.start_x
+        self.state = np.zeros(2)
         self.occ_arr[:] = 0
         return self.state
 
     def step(self,action):
         a = self.actions[action]
-        prev_a = self.state[0:2]
-        x = self.state[-1]+self.disc[0]
+        prev_state = np.copy(self.state)
+        self.state = np.array([min(max(prev_state[0]+a[0],self.min_pan),self.max_pan),min(max(prev_state[1]+a[1],self.min_tilt),self.max_tilt)])
 
-        self.state = np.insert(self.state,0,a)
-        self.state = self.state[:-2]
-        self.state[-1] = x
+        self.robot_pos += self.disc[0]
 
         # Calculate reward
-        new_pixels, free_space_pixels, total_pixels = self.fill_fov(x,a[0],a[1])
-        pan_distance = abs(prev_a[0]-a[0])
-        tilt_distance = abs(prev_a[1]-a[1])
+        new_pixels, free_space_pixels, total_pixels = self.fill_fov(self.robot_pos,self.state[0],self.state[1])
 
         reward = new_pixels/total_pixels + self.free_space_discount*free_space_pixels/total_pixels 
-        - self.pan_discount*pan_distance**2/(self.max_pan-self.min_pan)**2 - self.tilt_discount*tilt_distance**2/(self.max_tilt-self.min_tilt)**2
 
-        return self.state,reward,(x>=self.cyl_len),{}
+        return self.state,reward,(self.robot_pos>=self.cyl_len),{}
 
     def fill_fov(self,x,theta,phi):
         '''
