@@ -10,7 +10,7 @@ class PanTiltEnv(gym.Env):
     def __init__(self):
 
         # Discretization
-        self.disc = (0.05,1)
+        self.disc = (0.05,1) # (x_disc,angle_disc)
         self.raycast_disc = 0.75 
 
         # Bounds for pan-tilt
@@ -32,7 +32,7 @@ class PanTiltEnv(gym.Env):
 
         # Robot parameters
         self.fov = (100,85)
-        self.robot_pos = -self.cyl_rad/2
+        self.robot_pos = self.cyl_len/3
 
         # Gym spaces and setup
         self.occ_arr = np.zeros((int(self.cyl_len/self.disc[0]),int(360/self.disc[1])))
@@ -41,8 +41,13 @@ class PanTiltEnv(gym.Env):
         self.actions = [(self.pan_disc,0),(self.pan_disc,self.tilt_disc),(0,self.tilt_disc),(-self.pan_disc,self.tilt_disc),
                 (-self.pan_disc,0),(-self.pan_disc,-self.tilt_disc),(0,-self.tilt_disc),(self.pan_disc,-self.tilt_disc)]
 
-        self.low = np.array([self.min_pan,self.min_tilt])
-        self.high = np.array([self.max_pan,self.max_tilt])
+        # State space
+        w = self.cyl_rad*np.tan(np.deg2rad(self.fov[0]/2))
+        self.dx = int(w/self.cyl_len * self.occ_arr.shape[0])
+
+        y = self.occ_arr.shape[1]
+        self.low = np.zeros((2*self.dx,y))
+        self.high = np.ones((2*self.dx,y))
 
         self.state = np.zeros(2)
 
@@ -51,21 +56,34 @@ class PanTiltEnv(gym.Env):
     def reset(self):
         self.state = np.zeros(2)
         self.occ_arr[:] = 0
-        return self.state
+        return np.copy(self.low)
 
     def step(self,action):
         a = self.actions[action]
         prev_state = np.copy(self.state)
         self.state = np.array([min(max(prev_state[0]+a[0],self.min_pan),self.max_pan),min(max(prev_state[1]+a[1],self.min_tilt),self.max_tilt)])
+        print("state:",self.state)
 
         self.robot_pos += self.disc[0]
 
+        prev_slice = self.get_state_slice()
+
         # Calculate reward
         new_pixels, free_space_pixels, total_pixels = self.fill_fov(self.robot_pos,self.state[0],self.state[1])
-
         reward = new_pixels/total_pixels + self.free_space_discount*free_space_pixels/total_pixels 
 
-        return self.state,reward,(self.robot_pos>=self.cyl_len),{}
+        new_slice = self.get_state_slice()
+
+        slice = 0.5*(prev_slice + new_slice)
+
+        return slice,reward,(self.robot_pos>=2/3*self.cyl_len),{}
+
+    def get_state_slice(self):
+        xc = (self.robot_pos/self.cyl_len) * self.occ_arr.shape[0]
+        x0 = int(xc-self.dx)
+        x1 = int(xc+self.dx)
+        state = self.occ_arr[x0:x1,:]
+        return state
 
     def fill_fov(self,x,theta,phi):
         '''
@@ -123,16 +141,19 @@ class PanTiltEnv(gym.Env):
         '''
 
         # Shooting down barrel
-        if vec[1] == 0 and vec[2] == 0: return [0,1]
+        if vec[1] == 0 and vec[2] == 0: 
+            return [0,1]
 
         # Parameterized intersection with cylinder
-        t1 = (-2*self.robot_pos*vec[2] + np.sqrt((2*self.robot_pos*vec[2])**2 - 4*(vec[1]**2+vec[2]**2)*(self.robot_pos**2-self.cyl_rad**2))) / (2*(vec[1]**2+vec[2]**2))
-        t2 = (-2*self.robot_pos*vec[2] - np.sqrt((2*self.robot_pos*vec[2])**2 - 4*(vec[1]**2+vec[2]**2)*(self.robot_pos**2-self.cyl_rad**2))) / (2*(vec[1]**2+vec[2]**2))
-        t = max(t1,t2)
-        #t = np.roots([vec[1]**2+vec[2]**2,2*self.robot_pos*vec[2],self.robot_pos**2-self.cyl_rad**2]).max()
+        #t1 = (-2*self.robot_pos*vec[2] + np.sqrt((2*self.robot_pos*vec[2])**2 - 4*(vec[1]**2+vec[2]**2)*(self.robot_pos**2-self.cyl_rad**2))) / (2*(vec[1]**2+vec[2]**2))
+        #t2 = (-2*self.robot_pos*vec[2] - np.sqrt((2*self.robot_pos*vec[2])**2 - 4*(vec[1]**2+vec[2]**2)*(self.robot_pos**2-self.cyl_rad**2))) / (2*(vec[1]**2+vec[2]**2))
+        #t = max(t1,t2)
+        t = np.sqrt(self.cyl_rad**2 / (vec[0]**2 + vec[1]**2))
+        print("t:",t)
 
         # If outside of our sensor range lets return free space
-        if t < 0 or t > 6 or np.isnan(t) or np.isinf(t): return [0,1]
+        if t < 0 or t > 6 or np.isnan(t) or np.isinf(t): 
+            return [0,1]
 
         pos = [x + t*vec[0],t*vec[1], self.robot_pos+t*vec[2]]
 
